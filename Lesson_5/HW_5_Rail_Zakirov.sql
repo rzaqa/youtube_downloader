@@ -13,9 +13,6 @@ UPDATE vk.users SET updated_at = now() where users.updated_at IS NULL;
 
 
 
-
-
-
 /*
 Задание 2 - Таблица users была неудачно спроектирована. Записи created_at и updated_at
 были заданы типом VARCHAR и в них долгое время помещались значения в
@@ -23,8 +20,22 @@ UPDATE vk.users SET updated_at = now() where users.updated_at IS NULL;
 сохранив введеные ранее значения.
 */
 
+-- певрый вариант, не совсем в нем уверен, когда напрямую менять формат данных
+ALTER TABLE vk.users MODIFY created_at DATETIME;
+ALTER TABLE vk.users MODIFY updated_at DATETIME;
 
+-- второй способ, который я нагуглил, но у меня выполняется с ошибкой. Почему, может подскажете?
+ALTER TABLE users ADD COLUMN created_at_2 DATETIME;
+ALTER TABLE users ADD COLUMN updated_at_2 DATETIME;
 
+UPDATE vk.users
+SET created_at_2 = STR_TO_DATE(created_at,'YYYY-MM-DD hh:mm:ss');
+UPDATE vk.users
+SET updated_at_2 = STR_TO_DATE(updated_at,'YYYY-MM-DD hh:mm:ss');
+
+ALTER TABLE users
+DROP created_at, DROP updated_at,
+RENAME COLUMN created_at_2 TO created_at, RENAME COLUMN updated_at_2 TO updated_at;
 
 /*
 Задание 3 - В таблице складских запасов storehouses_products в поле value могут встречаться
@@ -34,11 +45,15 @@ UPDATE vk.users SET updated_at = now() where users.updated_at IS NULL;
 */
 
 
+
+
 /*
 Задание 4 - (по желанию) Из таблицы users необходимо извлечь пользователей, родившихся в августе и мае.
 Месяцы заданы в виде списка английских названий ('may', 'august')
-
  */
+
+SELECT * FROM users WHERE birthday LIKE '%may%' OR birthday LIKE '%august%';
+
 
 
 /*

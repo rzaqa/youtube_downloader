@@ -17,12 +17,59 @@ select 5 MOD 2; -- result is 1
 -- -------------------------------------------------------------
 
 SELECT * FROM catalogs WHERE name IS NULL;
+-- -------------------------------------------------------------
+CREATE TABLE tbl (
+    x INT,
+    y INT,
+    summ INT AS (x + y) STORED -- then data will be stored in DB
+
+)
+-- -------------------------------------------------------------
+
+SELECT * FROM catalogs;
+
+SELECT * FROM catalogs where id > 2;
+
+SELECT * FROM catalogs where id > 2 AND id < 5;
+
+SELECT * FROM catalogs where id BETWEEN 2 AND 5;
+
+SELECT * FROM catalogs where id NOT BETWEEN 2 AND 5;
+
+SELECT * FROM catalogs where id IN (1,2,5);
+
+SELECT * FROM catalogs where id NOT IN (1,2,5);
+
+
+SELECT * FROM catalogs where name LIKE 'processors';
+
+/*
+ LIKE
+ % - for or more or NO ONE symbols
+ _ - for ONE only symbol
+ */
+
+
+SELECT * FROM catalogs where name LIKE '%s';
+SELECT * FROM catalogs where name NOT LIKE '%s';
+-- -------------------------------------------------------------
+SELECT * FROM vk.profiles WHERE birthday >= '1990-01-01' and birthday < '2000-01-01';
+
+INSERT INTO vk.profiles (
+                         gender, birthday, photo_id, created_at, hometown, is_active
+)
+VALUES (
+        'm', '1998 May 20', '1234556', '2020-05-05', 'Moscow', 'True'
+       );
+
+
+SELECT * FROM vk.profiles WHERE birthday BETWEEN LIKE '199%'
 
 
 
+SELECT 7 RLIKE '[0-9]', 7 RLIKE '[0123456789]';
 
-
-
+SELECT 7 RLIKE '[[:digit:]]', 'hello' RLIKE '[[:digit:]]';
 
 
 
