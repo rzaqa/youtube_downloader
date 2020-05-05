@@ -1,7 +1,7 @@
 drop database if exists vk;
 create database vk;
-use vk;
 
+use vk;
 drop table if exists users;
 create table users (
     id SERIAL primary key, -- bigint unsigned not null auto_increment unique
@@ -24,7 +24,7 @@ CREATE table profiles(
     photo_id BIGINT UNSIGNED NULL,
     hometown VARCHAR(100),
     created_at DATETIME default NOW()
-)
+);
 
 alter table profiles
 add constraint fk_user_id
@@ -93,7 +93,7 @@ CREATE TABLE media(
 
     FOREIGN KEY(user_id) references users(id),
     FOREIGN KEY(media_type_id) references media_types(id)
-)
+);
 
 DROP TABLE IF EXISTS likes;
 CREATE TABLE likes(
@@ -103,7 +103,7 @@ CREATE TABLE likes(
     `created_at` DATETIME default NOW(),
     FOREIGN KEY (media_id) REFERENCES media(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
-)
+);
 
 
 DROP TABLE IF EXISTS photo_albums;
@@ -124,6 +124,5 @@ CREATE TABLE photos(
 
     FOREIGN KEY (album_id) REFERENCES photo_albums(id),
     FOREIGN KEY (media_id) REFERENCES media(id)
-
 );
 
