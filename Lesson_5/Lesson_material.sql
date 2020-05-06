@@ -71,10 +71,26 @@ SELECT 7 RLIKE '[0-9]', 7 RLIKE '[0123456789]';
 
 SELECT 7 RLIKE '[[:digit:]]', 'hello' RLIKE '[[:digit:]]';
 
+-- -------------------------------------------------------------
+SELECT id, catalog_id, price, name products ORDER BY catalog_id, price;
+
+SELECT id, catalog_id, price, name products ORDER BY catalog_id DESC, price DESC;
 
 
+SELECT id, catalog_id, price, name products LIMIT 2; -- id 1 and id 2
+SELECT id, catalog_id, price, name products LIMIT 2, 2; -- id 3 and id 4
+SELECT id, catalog_id, price, name products LIMIT 4, 2; -- id 5 nad id 6
+-- -------------------------------------------------------------
 
 
+SELECT DISTINCT catalog_id from products;
+
+-- -------------------------------------------------------------
+SELECT id, catalog_id, price, name FROM products WHERE catalog_id = 2 AND price > 5000;
+UPDATE products SET price = price * 0,9 WHERE catalog_id = 2 AND price > 5000;
+
+DELETE FROM products ORDER BY price DESC LIMIT 2;
+-- -------------------------------------------------------------
 
 
 

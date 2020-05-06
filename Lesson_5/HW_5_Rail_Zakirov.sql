@@ -44,8 +44,8 @@ RENAME COLUMN created_at_2 TO created_at, RENAME COLUMN updated_at_2 TO updated_
 увеличения значения value. Однако, нулевые запасы должны выводиться в конце, после всех записей.
 */
 
-
-
+SELECT storehouses_products ORDER BY value = 0, value; -- будет сортировка по увеличению кол-ва товара, но с 0 кол-ом внизу ,
+SELECT storehouses_products ORDER BY value = 0, value DESC; -- будет сортировка в порядке уменьшения кол-ва товара, но с 0 кол-ом внизу ,
 
 /*
 Задание 4 - (по желанию) Из таблицы users необходимо извлечь пользователей, родившихся в августе и мае.
@@ -62,12 +62,14 @@ SELECT * FROM catalogs WHERE id IN (5, 1, 2);
 Отсортируйте записи в порядке, заданном в списке IN.
  */
 
-
+SELECT * FROM catalogs ORDER BY FIND_IN_SET(id, '5,1,2');
 
 
 /*
 Задание 6 - Подсчитайте средний возраст пользователей в таблице users
  */
+
+
 
 
 /*
