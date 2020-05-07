@@ -92,5 +92,31 @@ UPDATE products SET price = price * 0,9 WHERE catalog_id = 2 AND price > 5000;
 DELETE FROM products ORDER BY price DESC LIMIT 2;
 -- -------------------------------------------------------------
 
+SELECT NOW();
+
+
+DESCRIBE users;
+
+SELECT id, firstname, DATE(created_at) FROM users;
+
+SELECT DATE_FORMAT(NOW(), '%Y');
+SELECT id, DATE_FORMAT(NOW(), '%Y') - DATE_FORMAT(updated_at, '%Y') FROM vk.users;
+
+SELECT id, DATE_FORMAT(updated_at, '%Y') FROM users;
+
+SELECT id, firstname, (TO_DAYS(NOW()) - TO_DAYS(updated_at))/ 365.25 FROM users;
+
+SELECT id, firstname, FLOOR((TO_DAYS(NOW()) - TO_DAYS(updated_at))/ 365.25) FROM users;
+
+SELECT id, firstname, TIMESTAMPDIFF(YEAR, updated_at, NOW()) FROM users;
+
+
+
+SELECT VERSION();
+SELECT LAST_INSERT_ID();
+SELECT DATABASE();
+
+
+
 
 
