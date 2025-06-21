@@ -2,8 +2,6 @@
 
 A simple desktop application for downloading YouTube videos using a graphical interface built with `tkinter` and `yt-dlp`.
 
-![screenshot](screenshot.png) <!-- (optional image placeholder) -->
-
 ---
 
 ## 🚀 Features
