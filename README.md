@@ -1,20 +1,32 @@
-1. Install node
-'''
-$ brew install node
-'''
+# 🎥 YouTube Video Downloader (GUI)
 
-Build the .app file
+A simple **desktop application** for downloading YouTube videos with a graphical interface built using **Tkinter** and **yt-dlp**.
 
-'''
-$ pyinstaller --onefile --windowed --add-binary "/Users/zakirovrjicloud.com/Python/downloader/down_venv/bin/yt-dlp:." --name "YouTubeDownloader" main.py
+---
 
+## 🚀 Features
 
-'''
+- 🖱️ **User-friendly interface** (Tkinter-based)  
+- 📥 **Download videos** in the best available MP4 format  
+- 📊 **Real-time progress bar** and status updates  
+- 🔗 Supports **single YouTube video URLs**  
+- ✅ Uses the reliable **yt-dlp** backend  
+- 🎨 Clean layout with **YouTube-style branding**
 
-Created a .dmg file
-$ hdiutil create -volname "YouTube Downloader" -srcfolder "dist/YouTubeDownloader.app" -ov -format UDZO "dist/YouTubeDownloader.dmg"
+---
 
+## 📦 Requirements
 
+- Python 3.8+
+- `yt-dlp`
+- `Pillow` (for image handling)
 
-Delete previous version of app
-$ rm -rf build dist YouTubeDownloader.spec 
+---
+
+## ⚙️ Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/rzaqa/youtube_downloader.git
+cd youtube_downloader
