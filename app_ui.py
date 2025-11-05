@@ -2,15 +2,26 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Optional
 
+from logger_config import app_logger
 from downloader_service import DownloaderService, DownloadRequest
 
 
 class AppUI:
     def __init__(self, root: tk.Tk, service: DownloaderService):
-        self.root = root
-        self.service = service
+        try:
+            app_logger.log_info("Initializing AppUI...")
+            self.root = root
+            self.service = service
 
-        self.root.title("YouTube Downloader")
+            self.root.title("YouTube Downloader")
+            
+            # Handle window closing properly
+            self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+            
+            app_logger.log_info("AppUI initialized successfully")
+        except Exception as e:
+            app_logger.log_exception("Error initializing AppUI")
+            raise
 
         self.mainframe = ttk.Frame(self.root)
         self.mainframe.grid(column=0, row=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -56,15 +67,24 @@ class AppUI:
         self.root.bind("<Return>", lambda _: self.on_download_click())
 
     def on_download_click(self):
-        url = self.url_entry.get().strip()
-        if not url:
-            messagebox.showerror("Error", "Please enter a valid YouTube URL.")
-            return
+        try:
+            url = self.url_entry.get().strip()
+            app_logger.log_info(f"Download button clicked with URL: {url}")
+            
+            if not url:
+                app_logger.log_warning("Empty URL provided")
+                messagebox.showerror("Error", "Please enter a valid YouTube URL.")
+                return
 
-        req = DownloadRequest(
-            url=url, format_=self.format_var.get(), quality=self.quality_var.get()
-        )
-        self.show_progress_window(req)
+            req = DownloadRequest(
+                url=url, format_=self.format_var.get(), quality=self.quality_var.get()
+            )
+            app_logger.log_info(f"Created download request: {req.format_}, {req.quality}")
+            self.show_progress_window(req)
+            
+        except Exception as e:
+            app_logger.log_exception("Error in on_download_click")
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
     def show_progress_window(self, req: DownloadRequest):
         progress_window = tk.Toplevel(self.root)
@@ -104,6 +124,14 @@ class AppUI:
             self.root.after(0, finalize)
 
         self.service.run(req, on_line=on_line, on_done=on_done)
+
+    def on_closing(self):
+        """Handle window closing event"""
+        app_logger.log_info("User requested to close application")
+        if messagebox.askokcancel("Quit", "Do you want to quit YouTube Downloader?"):
+            app_logger.log_info("Application closing by user request")
+            self.root.quit()
+            self.root.destroy()
 
     @staticmethod
     def _append_text(text_area: scrolledtext.ScrolledText, message: str) -> None:
