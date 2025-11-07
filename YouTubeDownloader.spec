@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import certifi
+
 import os
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -22,15 +24,39 @@ if os.path.exists(ffmpeg_path):
 else:
     print("[WARN] ffmpeg not found in app_binaries/. Audio extraction may require system ffmpeg.")
 
-# Hidden imports for tkinter
+# Include certifi's certificate bundle for SSL verification
+try:
+    import certifi
+    cert_path = certifi.where()
+    if os.path.exists(cert_path):
+        # Bundle the certificate file - place it in Resources so it's easy to find
+        # The path will be: Contents/Resources/certifi/cacert.pem
+        datas.append((cert_path, os.path.join("certifi", "")))
+        print(f"[INFO] Bundling SSL certificates from: {cert_path}")
+        print(f"[INFO] Certificate will be available at: Contents/Resources/certifi/cacert.pem")
+    else:
+        print("[WARN] certifi certificate file not found")
+except ImportError:
+    print("[WARN] certifi not installed, SSL certificates may not work in bundled app")
+
+# Hidden imports for tkinter, certifi, and yt_dlp
 hiddenimports = collect_submodules('tkinter')
+hiddenimports.append('certifi')
+# Collect all yt_dlp submodules for Python API usage
+try:
+    yt_dlp_modules = collect_submodules('yt_dlp')
+    hiddenimports.extend(yt_dlp_modules)
+    print(f"[INFO] Collected {len(yt_dlp_modules)} yt_dlp submodules")
+except Exception as e:
+    print(f"[WARN] Could not collect yt_dlp submodules: {e}")
+    hiddenimports.append('yt_dlp')  # At least add the main module
 
 # Analysis configuration
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=datas,
+    datas=datas + [(certifi.where(), "certifi")],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
