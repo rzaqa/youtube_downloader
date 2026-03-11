@@ -2,6 +2,7 @@ import os
 import subprocess
 import threading
 import sys
+import shutil
 from typing import Callable, List, Optional
 from logger_config import app_logger
 
@@ -24,119 +25,167 @@ class DownloaderService:
         self.yt_dlp_path = yt_dlp_path
         self.settings = settings
         self.use_python_module = False
-        
-        # Try to use yt-dlp as Python module first (better SSL support)
+
+        module_available = False
         try:
             import yt_dlp
-            self.use_python_module = True
-            app_logger.log_info("Using yt-dlp Python module (better SSL certificate support)")
+            module_available = True
+            app_logger.log_info(f"yt_dlp module file: {getattr(yt_dlp, '__file__', 'unknown')}")
+            app_logger.log_info(
+                f"yt_dlp module version: {getattr(getattr(yt_dlp, 'version', None), '__version__', 'unknown')}"
+            )
         except ImportError:
-            app_logger.log_info(f"yt-dlp Python module not available, using binary: {yt_dlp_path}")
-            if not yt_dlp_path:
+            module_available = False
+
+        binary_available = self._binary_is_available(yt_dlp_path)
+
+        if binary_available and yt_dlp_path:
+            try:
+                result = subprocess.run(
+                    [yt_dlp_path, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                app_logger.log_info(f"yt-dlp binary version: {result.stdout.strip()}")
+            except Exception as e:
+                app_logger.log_warning(f"Could not get yt-dlp binary version: {e}")
+
+        if getattr(sys, "frozen", False):
+            if module_available:
+                self.use_python_module = True
+                app_logger.log_info("Using yt-dlp Python module in frozen app")
+            elif binary_available:
+                self.use_python_module = False
+                app_logger.log_info(f"Using yt-dlp binary in frozen app: {yt_dlp_path}")
+            else:
                 app_logger.log_error("Neither yt-dlp module nor binary is available!")
-        
+        else:
+            if module_available:
+                self.use_python_module = True
+                app_logger.log_info("Using yt-dlp Python module in development")
+            elif binary_available:
+                self.use_python_module = False
+                app_logger.log_info(f"Using yt-dlp binary in development: {yt_dlp_path}")
+            else:
+                app_logger.log_error("Neither yt-dlp module nor binary is available!")
+
         app_logger.log_info(f"Downloads directory: {settings.downloads_dir}")
 
-    def build_options(self, req: DownloadRequest) -> dict:
-        """Build yt-dlp options dictionary for Python API."""
+    @staticmethod
+    def _binary_is_available(yt_dlp_path: Optional[str]) -> bool:
+        if not yt_dlp_path:
+            return False
+        if os.path.isabs(yt_dlp_path):
+            return os.path.exists(yt_dlp_path) and os.access(yt_dlp_path, os.X_OK)
+        return shutil.which(yt_dlp_path) is not None
+
+    @staticmethod
+    def _audio_quality_setting(quality: str) -> str:
+        """Map UI quality to ffmpeg mp3 quality (0=best, 9=smaller/lower)."""
+        if quality == "High":
+            return "0"
+        if quality == "Medium":
+            return "5"
+        return "9"
+
+    @staticmethod
+    def _yt_dlp_format_selector(req: DownloadRequest) -> str:
+        """Return a resilient yt-dlp format selector."""
+        if req.format_ == "Audio":
+            return "ba/b"
+
+        if req.quality == "High":
+            return "bestvideo+bestaudio/best"
+        if req.quality == "Medium":
+            return "bv*[height<=720]+ba/b[height<=720]"
+        return "bv*[height<=480]+ba/b[height<=480]"
+
+    @staticmethod
+    def _safe_format_selector(req: DownloadRequest) -> str:
+        """Very permissive selector used only for retry paths."""
+        if req.format_ == "Audio":
+            return "ba/b"
+        return "bestvideo+bestaudio/best"
+
+    @staticmethod
+    def _is_format_unavailable_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return (
+            "requested format is not available" in message
+            or "format is not available" in message
+        )
+
+    def build_options(self, req: DownloadRequest, force_safe_format: bool = False) -> dict:
+        format_selector = (
+            self._safe_format_selector(req)
+            if force_safe_format
+            else self._yt_dlp_format_selector(req)
+        )
+
         options = {
-            'outtmpl': os.path.join(self.settings.downloads_dir, '%(title)s.%(ext)s'),
-            'quiet': False,
-            'no_warnings': False,
+            "outtmpl": os.path.join(self.settings.downloads_dir, "%(title)s.%(ext)s"),
+            "quiet": False,
+            "no_warnings": False,
+            "noplaylist": True,
+            "format": format_selector,
+            "merge_output_format": "mp4",
         }
-        
-        # Add ffmpeg location if available
+
         if self.settings.ffmpeg_path and os.path.exists(self.settings.ffmpeg_path):
-            options['ffmpeg_location'] = self.settings.ffmpeg_path
+            options["ffmpeg_location"] = os.path.dirname(self.settings.ffmpeg_path)
             app_logger.log_info(f"Using ffmpeg from: {self.settings.ffmpeg_path}")
-        
-        # Audio extraction options
+
         if req.format_ == "Audio":
             options.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '0',
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": self._audio_quality_setting(req.quality),
                 }],
-                'outtmpl': os.path.join(self.settings.downloads_dir, '%(title)s.%(ext)s'),
             })
-        else:
-            # Video quality options
-            if req.quality == "High":
-                options['format'] = 'best'
-            elif req.quality == "Medium":
-                options['format'] = 'worst'
-            elif req.quality == "Low":
-                options['format'] = 'worst'
-        
+
         return options
 
-    def build_command(self, req: DownloadRequest) -> List[str]:
-        try:
-            app_logger.log_info(f"Building command for URL: {req.url}")
-            app_logger.log_info(f"Format: {req.format_}, Quality: {req.quality}")
-            
-            command: List[str] = [
-                self.yt_dlp_path,
-                "-o",
-                os.path.join(self.settings.downloads_dir, "%(title)s.%(ext)s"),
+    def build_command(self, req: DownloadRequest, force_safe_format: bool = False) -> List[str]:
+        app_logger.log_info(f"Building command for URL: {req.url}")
+        app_logger.log_info(f"Format: {req.format_}, Quality: {req.quality}")
+
+        command: List[str] = [
+            self.yt_dlp_path,
+            "-o",
+            os.path.join(self.settings.downloads_dir, "%(title)s.%(ext)s"),
+            "--no-playlist",
+            "--merge-output-format",
+            "mp4",
+        ]
+
+        if self.settings.ffmpeg_path:
+            ffmpeg_path = self.settings.ffmpeg_path
+            if not os.path.isabs(ffmpeg_path):
+                ffmpeg_path = os.path.abspath(ffmpeg_path)
+
+            if os.path.exists(ffmpeg_path):
+                ffmpeg_dir = os.path.dirname(ffmpeg_path)
+                app_logger.log_info(f"Using ffmpeg from: {ffmpeg_path}")
+                command += ["--ffmpeg-location", ffmpeg_dir]
+
+        if req.format_ == "Audio":
+            command += [
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--audio-quality", self._audio_quality_setting(req.quality),
             ]
 
-            # Note: yt-dlp should respect SSL_CERT_FILE and REQUESTS_CA_BUNDLE environment variables
-            # which are set in the subprocess environment (see run() method)
-            # yt-dlp doesn't have a --cert command-line option
+        format_selector = (
+            self._safe_format_selector(req)
+            if force_safe_format
+            else self._yt_dlp_format_selector(req)
+        )
+        command += ["-f", format_selector, req.url]
 
-            # If ffmpeg is bundled or available, point yt-dlp to it explicitly
-            if self.settings.ffmpeg_path:
-                # The path should already be absolute from get_ffmpeg_path()
-                # But ensure it's absolute and exists before using it
-                ffmpeg_path = self.settings.ffmpeg_path
-                
-                # If somehow it's not absolute, make it absolute (but this shouldn't happen)
-                if not os.path.isabs(ffmpeg_path):
-                    app_logger.log_warning(f"ffmpeg path is not absolute: {ffmpeg_path}, making it absolute")
-                    ffmpeg_path = os.path.abspath(ffmpeg_path)
-                
-                # Verify it exists
-                if os.path.exists(ffmpeg_path):
-                    app_logger.log_info(f"Using ffmpeg from: {ffmpeg_path}")
-                    # yt-dlp --ffmpeg-location can accept either the binary path or directory
-                    # We'll pass the binary path directly
-                    command += ["--ffmpeg-location", ffmpeg_path]
-                else:
-                    app_logger.log_error(f"ffmpeg path does not exist: {ffmpeg_path}")
-                    # Don't add --ffmpeg-location if path doesn't exist
-
-            if req.format_ == "Audio":
-                app_logger.log_info("Adding audio extraction parameters")
-                command += [
-                    "--extract-audio",
-                    "--audio-format",
-                    "mp3",
-                    "--audio-quality",
-                    "0",
-                    "--output",
-                    os.path.join(self.settings.downloads_dir, "%(title)s.mp3"),
-                ]
-
-            if req.quality == "High":
-                command += ["-f", "bestaudio/best"]
-                app_logger.log_info("Using high quality format")
-            elif req.quality == "Medium":
-                command += ["-f", "worstaudio/worst"]
-                app_logger.log_info("Using medium quality format")
-            elif req.quality == "Low":
-                command += ["-f", "worstaudio"]
-                app_logger.log_info("Using low quality format")
-
-            command.append(req.url)
-            app_logger.log_info(f"Final command: {' '.join(command)}")
-            return command
-            
-        except Exception as e:
-            app_logger.log_exception("Error building command")
-            raise
+        app_logger.log_info(f"Final command: {' '.join(command)}")
+        return command
 
     def run(
         self,
@@ -149,6 +198,7 @@ class DownloaderService:
         def worker():
             try:
                 app_logger.log_info("Starting download worker thread")
+                force_safe_binary_format = False
                 
                 # Use Python module if available (better SSL support)
                 if self.use_python_module:
@@ -225,8 +275,39 @@ class DownloaderService:
                         app_logger.log_exception("Error using yt-dlp Python module")
                         error_msg = f"Python module error: {str(e)}"
                         on_line(f"Error: {error_msg}")
-                        on_done(False, None, error_msg)
-                        return
+
+                        # Retry once using a very permissive selector when format matching fails.
+                        if self._is_format_unavailable_error(e):
+                            try:
+                                import yt_dlp
+
+                                on_line("Retrying with fallback format selector...")
+                                app_logger.log_info(
+                                    "Retrying Python module with fallback format selector"
+                                )
+                                fallback_options = self.build_options(
+                                    req, force_safe_format=True
+                                )
+                                ydl = yt_dlp.YoutubeDL(fallback_options)
+                                info = ydl.extract_info(req.url, download=True)
+                                final_path = ydl.prepare_filename(info)
+                                on_done(True, final_path, None)
+                                return
+                            except Exception:
+                                app_logger.log_exception(
+                                    "Fallback Python module attempt failed"
+                                )
+                                force_safe_binary_format = True
+
+                        # If binary is available, continue to binary fallback instead of failing early.
+                        if self.yt_dlp_path:
+                            on_line("Falling back to yt-dlp binary...")
+                            app_logger.log_info(
+                                "Falling back to yt-dlp binary after Python module failure"
+                            )
+                        else:
+                            on_done(False, None, error_msg)
+                            return
                 
                 # Fallback to binary if module not available
                 if not self.yt_dlp_path:
@@ -236,7 +317,7 @@ class DownloaderService:
                     on_done(False, None, "yt-dlp path is not configured")
                     return
 
-                command = self.build_command(req)
+                command = self.build_command(req, force_safe_format=force_safe_binary_format)
                 on_line("Download Started...\n")
                 on_line("Running command: " + " ".join(command))
 
@@ -286,6 +367,11 @@ class DownloaderService:
                 app_logger.log_info("Waiting for process to complete...")
                 process.wait()
                 app_logger.log_info(f"Process completed with return code: {process.returncode}")
+
+                stderr_output = process.stderr.read().strip() if process.stderr else ""
+                if stderr_output:
+                    app_logger.log_info(f"yt-dlp stderr: {stderr_output}")
+                    on_line(stderr_output)
 
                 if process.returncode != 0:
                     error_message = (

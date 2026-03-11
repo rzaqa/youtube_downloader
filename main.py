@@ -258,21 +258,21 @@ def main():
         # Configure SSL certificates first (important for bundled apps)
         configure_ssl_certificates()
         
-        # Get yt-dlp path (optional if Python module is available)
+        # Get yt-dlp path (preferred when available)
         app_logger.log_info("Getting yt-dlp path...")
         YT_DLP_CMD = get_yt_dlp_path()
         
-        # Check if yt-dlp Python module is available
-        try:
-            import yt_dlp
-            app_logger.log_info("yt-dlp Python module is available - will use it instead of binary")
-            # YT_DLP_CMD can be None if Python module is available
-        except ImportError:
-            if not YT_DLP_CMD:
-                app_logger.log_error("yt-dlp not found! Please install yt-dlp (pip install yt-dlp).")
+        # Ensure at least one backend is available (binary or Python module).
+        if not YT_DLP_CMD:
+            try:
+                import yt_dlp  # noqa: F401
+                app_logger.log_info("yt-dlp Python module is available (binary not found)")
+            except ImportError:
+                app_logger.log_error(
+                    "yt-dlp not found! Please install yt-dlp (pip install yt-dlp) or bundle the yt-dlp binary."
+                )
                 print("yt-dlp not found! Please install yt-dlp.")
                 sys.exit(1)
-            app_logger.log_info(f"Using yt-dlp binary: {YT_DLP_CMD}")
         FFMPG = get_ffmpeg_path()
         if FFMPG:
             app_logger.log_info(f"Using ffmpeg: {FFMPG}")
