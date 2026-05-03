@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import tkinter as tk
 import traceback
@@ -203,6 +204,7 @@ def get_ffmpeg_path():
             # Use os.path.join with already-absolute paths to ensure we get absolute results
             possible_paths = [
                 os.path.join(base_dir, "ffmpeg"),  # Contents/MacOS/ffmpeg
+                os.path.join(base_dir, "_internal", "ffmpeg"),  # PyInstaller onedir layout
                 os.path.join(contents_dir, "Resources", "ffmpeg"),  # Contents/Resources/ffmpeg
                 os.path.join(contents_dir, "Frameworks", "ffmpeg"),  # Contents/Frameworks/ffmpeg
                 # Common Homebrew locations (Finder/open often lacks PATH)
@@ -238,13 +240,24 @@ def get_ffmpeg_path():
                         os.chmod(final_path, 0o755)
                     
                     app_logger.log_info(f"Using ffmpeg absolute path: {final_path}")
+                    ffprobe = os.path.join(os.path.dirname(final_path), "ffprobe")
+                    if not os.path.isfile(ffprobe):
+                        app_logger.log_warning(
+                            "ffprobe not found next to ffmpeg (needed for MP3/conversion). "
+                            "Copy ffprobe into app_binaries next to ffmpeg and rebuild."
+                        )
                     return final_path
 
             app_logger.log_warning("ffmpeg not found in bundled locations; audio extraction may rely on system ffmpeg")
             return None
         else:
-            # In development, prefer system ffmpeg if present
-            return "ffmpeg"
+            resolved = shutil.which("ffmpeg")
+            if resolved:
+                return os.path.abspath(resolved)
+            app_logger.log_warning(
+                "ffmpeg not found on PATH; install ffmpeg or add it to PATH for MP3/audio postprocessing."
+            )
+            return None
     except Exception:
         app_logger.log_exception("Error in get_ffmpeg_path")
         return None
@@ -276,8 +289,15 @@ def main():
         FFMPG = get_ffmpeg_path()
         if FFMPG:
             app_logger.log_info(f"Using ffmpeg: {FFMPG}")
+            ffprobe_hint = os.path.join(os.path.dirname(FFMPG), "ffprobe")
+            if not os.path.isfile(ffprobe_hint):
+                app_logger.log_warning(
+                    f"ffprobe not found beside ffmpeg ({ffprobe_hint}); yt-dlp postprocessing may fail."
+                )
         else:
-            app_logger.log_warning("ffmpeg not found; audio extraction may fail unless system ffmpeg is available")
+            app_logger.log_warning(
+                "ffmpeg not found; audio extraction / merging will fail unless yt-dlp finds ffmpeg on PATH."
+            )
         
         # Initialize Tkinter
         app_logger.log_info("Initializing Tkinter application...")

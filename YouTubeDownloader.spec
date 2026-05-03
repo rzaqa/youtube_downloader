@@ -10,6 +10,7 @@ block_cipher = None
 # Get bundled binary paths
 yt_dlp_path = os.path.abspath("app_binaries/yt-dlp")
 ffmpeg_path = os.path.abspath("app_binaries/ffmpeg")
+ffprobe_path = os.path.abspath("app_binaries/ffprobe")
 
 # Verify yt-dlp exists (required)
 if not os.path.exists(yt_dlp_path):
@@ -23,6 +24,15 @@ if os.path.exists(ffmpeg_path):
     datas.append((ffmpeg_path, "."))
 else:
     print("[WARN] ffmpeg not found in app_binaries/. Audio extraction may require system ffmpeg.")
+
+# ffprobe ships with ffmpeg; yt-dlp needs it beside ffmpeg for MP3/postprocess (copy from same bin dir).
+if os.path.exists(ffprobe_path):
+    datas.append((ffprobe_path, "."))
+else:
+    print(
+        "[WARN] ffprobe not found in app_binaries/. Copy ffprobe next to ffmpeg "
+        "(e.g. same folder as `which ffmpeg`) or MP3 extraction may fail in the app."
+    )
 
 # Include certifi's certificate bundle for SSL verification
 try:

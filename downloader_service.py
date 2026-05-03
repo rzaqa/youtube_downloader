@@ -72,6 +72,18 @@ class DownloaderService:
 
         app_logger.log_info(f"Downloads directory: {settings.downloads_dir}")
 
+    def _resolved_ffmpeg(self) -> Optional[str]:
+        """Absolute path to ffmpeg if Settings points at a real binary or PATH name."""
+        path = self.settings.ffmpeg_path
+        if not path:
+            return None
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return os.path.abspath(path)
+        resolved = shutil.which(path)
+        if resolved and os.path.isfile(resolved) and os.access(resolved, os.X_OK):
+            return os.path.abspath(resolved)
+        return None
+
     @staticmethod
     def _binary_is_available(yt_dlp_path: Optional[str]) -> bool:
         if not yt_dlp_path:
@@ -91,22 +103,33 @@ class DownloaderService:
 
     @staticmethod
     def _yt_dlp_format_selector(req: DownloadRequest) -> str:
-        """Return a resilient yt-dlp format selector."""
+        """Return a yt-dlp format selector: one output file when ffmpeg is available."""
         if req.format_ == "Audio":
-            return "ba/b"
+            # Prefer m4a (aac) for reliable FFmpeg → mp3; avoid bare `best` as first pick (can confuse merge/extract).
+            return "bestaudio[ext=m4a]/bestaudio/bestaudio/ba/b"
 
+        # Video: prefer progressive MP4 when good enough; else merge DASH → one mp4 (needs ffmpeg).
         if req.quality == "High":
-            return "bestvideo+bestaudio/best"
+            return (
+                "bestvideo*[height<=1080]+bestaudio/bestvideo*+bestaudio/"
+                "best[ext=mp4]/best"
+            )
         if req.quality == "Medium":
-            return "bv*[height<=720]+ba/b[height<=720]"
-        return "bv*[height<=480]+ba/b[height<=480]"
+            return (
+                "best[height<=720][ext=mp4]/bv*[height<=720]+ba/"
+                "b[height<=720][ext=mp4]/b[height<=720]"
+            )
+        return (
+            "best[height<=480][ext=mp4]/bv*[height<=480]+ba/"
+            "b[height<=480][ext=mp4]/b[height<=480]"
+        )
 
     @staticmethod
     def _safe_format_selector(req: DownloadRequest) -> str:
         """Very permissive selector used only for retry paths."""
         if req.format_ == "Audio":
-            return "ba/b"
-        return "bestvideo+bestaudio/best"
+            return "bestaudio/ba/b"
+        return "bestvideo*+bestaudio/best[ext=mp4]/best"
 
     @staticmethod
     def _is_format_unavailable_error(exc: Exception) -> bool:
@@ -132,9 +155,10 @@ class DownloaderService:
             "merge_output_format": "mp4",
         }
 
-        if self.settings.ffmpeg_path and os.path.exists(self.settings.ffmpeg_path):
-            options["ffmpeg_location"] = os.path.dirname(self.settings.ffmpeg_path)
-            app_logger.log_info(f"Using ffmpeg from: {self.settings.ffmpeg_path}")
+        ffmpeg_exe = self._resolved_ffmpeg()
+        if ffmpeg_exe:
+            options["ffmpeg_location"] = ffmpeg_exe
+            app_logger.log_info(f"Using ffmpeg from: {ffmpeg_exe}")
 
         if req.format_ == "Audio":
             options.update({
@@ -142,6 +166,7 @@ class DownloaderService:
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": self._audio_quality_setting(req.quality),
+                    "keepvideo": False,
                 }],
             })
 
@@ -160,15 +185,10 @@ class DownloaderService:
             "mp4",
         ]
 
-        if self.settings.ffmpeg_path:
-            ffmpeg_path = self.settings.ffmpeg_path
-            if not os.path.isabs(ffmpeg_path):
-                ffmpeg_path = os.path.abspath(ffmpeg_path)
-
-            if os.path.exists(ffmpeg_path):
-                ffmpeg_dir = os.path.dirname(ffmpeg_path)
-                app_logger.log_info(f"Using ffmpeg from: {ffmpeg_path}")
-                command += ["--ffmpeg-location", ffmpeg_dir]
+        ffmpeg_exe = self._resolved_ffmpeg()
+        if ffmpeg_exe:
+            app_logger.log_info(f"Using ffmpeg from: {ffmpeg_exe}")
+            command += ["--ffmpeg-location", ffmpeg_exe]
 
         if req.format_ == "Audio":
             command += [
@@ -199,7 +219,14 @@ class DownloaderService:
             try:
                 app_logger.log_info("Starting download worker thread")
                 force_safe_binary_format = False
-                
+
+                ffmpeg_exe = self._resolved_ffmpeg()
+                if ffmpeg_exe:
+                    ffmpeg_bin_dir = os.path.dirname(ffmpeg_exe)
+                    os.environ["PATH"] = (
+                        ffmpeg_bin_dir + os.pathsep + os.environ.get("PATH", "")
+                    )
+
                 # Use Python module if available (better SSL support)
                 if self.use_python_module:
                     try:
@@ -326,8 +353,9 @@ class DownloaderService:
                 popen_env = os.environ.copy()
                 
                 # Ensure ffmpeg directory is on PATH if provided
-                if self.settings.ffmpeg_path:
-                    ffmpeg_dir = os.path.dirname(self.settings.ffmpeg_path)
+                ffmpeg_exe_cmd = self._resolved_ffmpeg()
+                if ffmpeg_exe_cmd:
+                    ffmpeg_dir = os.path.dirname(ffmpeg_exe_cmd)
                     popen_env["PATH"] = ffmpeg_dir + os.pathsep + popen_env.get("PATH", "")
                 
                 # Ensure SSL certificate environment variables are passed to yt-dlp subprocess
@@ -374,11 +402,7 @@ class DownloaderService:
                     on_line(stderr_output)
 
                 if process.returncode != 0:
-                    error_message = (
-                        process.stderr.read().strip()
-                        if process.stderr
-                        else "Unknown error"
-                    )
+                    error_message = stderr_output or "Unknown error"
                     app_logger.log_error(f"Download failed with return code {process.returncode}: {error_message}")
                     on_line(f"Download failed!\n{error_message}")
                     on_done(False, destination_path, error_message)
